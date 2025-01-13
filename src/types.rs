@@ -1,10 +1,17 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, BinaryHeap};
 
-enum Tasks{
+
+const MAX_TASK_RETRY: u32 = 5;
+
+enum Operations {
     OpenFile,
-    WriteToFile,
-    Addition,
-    Subtraction,
+    WriteToFile, 
+    GetBTCPrice, 
+    GetETHPrice,
+}
+
+impl Operations {
+    
 }
 
 enum Priority {
@@ -13,9 +20,13 @@ enum Priority {
     High(u32)
 }
 
-
+pub struct Tasks {
+    task_type: Operations,
+    priority_level: Priority,
+    retry_counter: u32,
+}
 
 pub struct TaskQueue{
-    //binary heap
-    //hashmap
+    priority_manager: BinaryHeap<Priority>,
+    task_manager: HashMap<u32, Tasks>
 }
