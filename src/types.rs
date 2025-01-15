@@ -15,21 +15,21 @@ pub enum Operations {
 
 impl Operations {
     pub fn open_file(path: &str) -> Result<()> {
-        let mut data_file = File::open(path).unwrap();
+        let mut data_file = File::open(path).context("Coudlnt open file")?;
         let mut contents = String::new();
-        data_file.read_to_string(&mut contents).unwrap();
+        data_file.read_to_string(&mut contents).context("couldnt read the file")?;
         println!("The file reads: {:?}", contents);
         Ok(())
     }
 
     pub fn create_and_write_to_file(word: &str) -> Result<()> {
-        let mut data_file = File::create("data.txt").expect("file creation failed");
-        data_file.write(word.as_bytes()).expect("write failed");
+        let mut data_file = File::create("data.txt").context("Couldnt create file")?;
+        data_file.write(word.as_bytes()).context("failed to write to file")?;
         println!("Created a file data.txt");
         Ok(())
     }
 
-    pub async fn get_current_btc_price() -> Result<f32> {
+    pub async fn get_current_btc_price() -> Result<f64> {
         let client = reqwest::Client::new();
         let response = client
             .get("https://api.coingecko.com/api/v3/simple/price")
@@ -48,11 +48,11 @@ impl Operations {
             .as_f64()
             .ok_or_else(|| anyhow!("Failed to extract price"))?;
     
-        Ok(price as f32)
+        Ok(price)
 
     }
 
-    pub async fn get_current_eth_price() -> Result<f32> {
+    pub async fn get_current_eth_price() -> Result<f64> {
         let client = reqwest::Client::new();
         let response = client
             .get("https://api.coingecko.com/api/v3/simple/price")
@@ -71,10 +71,9 @@ impl Operations {
             .as_f64()
             .ok_or_else(|| anyhow!("Failed to extract price"))?;
     
-        Ok(price as f32)
+        Ok(price)
     }
 }
-
 
 #[derive(Eq, PartialEq, Ord, PartialOrd)]
 pub enum Priority {
