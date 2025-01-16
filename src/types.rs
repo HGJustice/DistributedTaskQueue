@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Ok, Result};
+use anyhow::{anyhow, bail, Context, Ok, Result};
 use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -75,7 +75,7 @@ impl Operations {
     }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub enum Priority {
     High(u32),
     Medium(u32),
@@ -95,13 +95,59 @@ impl Tasks {
 }
 
 pub struct TaskQueue {
+    task_counter: u32,
     priority_manager: BinaryHeap<Priority>,
     task_manager: HashMap<u32, Tasks>
 }
 
 impl TaskQueue {
     pub fn new() -> TaskQueue {
-        TaskQueue { priority_manager: BinaryHeap::new() , task_manager: HashMap::new() }
+        TaskQueue { task_counter: 1, priority_manager: BinaryHeap::new(), task_manager: HashMap::new() }
     }
-    
+
+    pub fn insert_task(&mut self, task: Operations, priority_level: Priority) -> Result<()> {
+        let counter = self.task_counter;
+
+        let task_priority = match priority_level {
+            Priority::High(_) => Priority::High(counter),
+            Priority::Medium(_) => Priority::Medium(counter),
+            Priority::Low(_) => Priority::Low(counter),
+        };
+
+        let new_task = Tasks::new(task, task_priority.clone());
+        self.task_manager.insert(counter, new_task);
+        self.priority_manager.push(task_priority);
+        self.task_counter += 1;
+        Ok(())
+    }
+
+    pub fn get_task(&self, task_key: u32) -> Result<&Tasks> {
+        let result = self.task_manager.get(&task_key).ok_or(anyhow!("key value doesnt exisit"))?;
+        Ok(result)
+    }
+
+    pub fn get_priority_task(&self) -> Result<&Priority> {
+        let result = self.priority_manager.peek().ok_or(anyhow!("no priority avaiable"))?;
+        Ok(result)
+    }
+
+    pub fn execute_task(&mut self,) -> Result<()>{
+        // get the top of the prioeirty heap
+            let first = self.priority_manager.pop().unwrap();
+            let task_key = match first {
+                Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
+            };
+            let task = self.task_manager.get(&task_key);
+            match task {
+                Operations::OpenFile => {
+                    Operations::open_file(path)?;
+                    
+                }
+            }
+        
+        //get the current task
+        //run it
+        Ok(())
+    }
+
 }
