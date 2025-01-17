@@ -14,8 +14,8 @@ pub enum Operations {
 }
 
 impl Operations {
-    pub fn open_file(path: &str) -> Result<()> {
-        let mut data_file = File::open(path).context("Coudlnt open file")?;
+    pub fn open_file() -> Result<()> {
+        let mut data_file = File::open("task_queue/test_file.txt").context("Coudlnt open file")?;
         let mut contents = String::new();
         data_file.read_to_string(&mut contents).context("couldnt read the file")?;
         println!("The file reads: {:?}", contents);
@@ -49,7 +49,6 @@ impl Operations {
             .ok_or_else(|| anyhow!("Failed to extract price"))?;
     
         Ok(price)
-
     }
 
     pub async fn get_current_eth_price() -> Result<f64> {
@@ -131,23 +130,29 @@ impl TaskQueue {
         Ok(result)
     }
 
-    pub fn execute_task(&mut self,) -> Result<()>{
-        // get the top of the prioeirty heap
-            let first = self.priority_manager.pop().unwrap();
-            let task_key = match first {
-                Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
-            };
-            let task = self.task_manager.get(&task_key);
-            match task {
-                Operations::OpenFile => {
-                    Operations::open_file(path)?;
-                    
-                }
-            }
+    pub async fn execute_task(&mut self,) -> Result<()>{
+        let first = self.priority_manager.pop().ok_or(anyhow!("nothing in the queue"))?;
+        let task_key = match first {
+            Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
+        };
+        let task = self.task_manager.get(&task_key).ok_or(anyhow!("task not found"))?;
         
-        //get the current task
-        //run it
-        Ok(())
-    }
-
+        match task.task_type {
+            Operations::OpenFile => {
+                Operations::open_file()?;
+            },
+            Operations::WriteToFile => {
+                Operations::create_and_write_to_file("Hi")?;
+            },
+            Operations::GetBTCPrice => {
+                let btc_price = Operations::get_current_btc_price().await?;
+                println!("The current BTC Price is {:?}", btc_price);
+            }
+            Operations::GetETHPrice => {
+                let eth_price = Operations::get_current_eth_price().await?;
+                println!("The current ETH Price is {:?}", eth_price);
+            }
+        }
+            Ok(())
+}
 }
