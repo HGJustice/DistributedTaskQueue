@@ -96,12 +96,13 @@ impl Tasks {
 pub struct TaskQueue {
     task_counter: u32,
     priority_manager: BinaryHeap<Priority>,
-    task_manager: HashMap<u32, Tasks>
+    task_manager: HashMap<u32, Tasks>,
+    failed_task_manager: BinaryHeap<Priority>,
 }
 
 impl TaskQueue {
     pub fn new() -> TaskQueue {
-        TaskQueue { task_counter: 1, priority_manager: BinaryHeap::new(), task_manager: HashMap::new() }
+        TaskQueue { task_counter: 1, priority_manager: BinaryHeap::new(), task_manager: HashMap::new(), failed_task_manager: BinaryHeap::new() }
     }
 
     pub fn insert_task(&mut self, task: Operations, priority_level: Priority) -> Result<()> {
@@ -135,24 +136,85 @@ impl TaskQueue {
         let task_key = match first {
             Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
         };
-        let task = self.task_manager.get(&task_key).ok_or(anyhow!("task not found"))?;
+        let task = self.task_manager.get_mut(&task_key).ok_or(anyhow!("task not found"))?;
         
         match task.task_type {
             Operations::OpenFile => {
-                Operations::open_file()?;
+                let result = Operations::open_file();
+                if result.is_err(){
+                    self.failed_task_manager.push(first);
+                    task.retry_counter += 1;
+                }
             },
             Operations::WriteToFile => {
-                Operations::create_and_write_to_file("Hi")?;
+                let result = Operations::create_and_write_to_file("Hi");
+                if result.is_err(){
+                    self.failed_task_manager.push(first);
+                    task.retry_counter += 1;
+                }
             },
             Operations::GetBTCPrice => {
-                let btc_price = Operations::get_current_btc_price().await?;
+                let btc_price = Operations::get_current_btc_price().await;
+                if btc_price.is_err(){
+                    self.failed_task_manager.push(first);
+                    task.retry_counter += 1;
+                }
                 println!("The current BTC Price is {:?}", btc_price);
             }
             Operations::GetETHPrice => {
-                let eth_price = Operations::get_current_eth_price().await?;
+                let eth_price = Operations::get_current_eth_price().await;
+                if eth_price.is_err(){
+                    self.failed_task_manager.push(first);
+                    task.retry_counter += 1;
+                }
                 println!("The current ETH Price is {:?}", eth_price);
             }
         }
             Ok(())
 }
+
+    pub async fn re_execute_task(&mut self,) -> Result<()> {
+        let retry_priority = self.failed_task_manager.pop().ok_or(anyhow!("retry manager is empty"))?;
+        let retry_key =  match retry_priority  {
+            Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
+        };
+        let task = self.task_manager.get_mut(&retry_key).ok_or(anyhow!("task manager empty"))?;
+        if task.retry_counter >= MAX_TASK_RETRY {
+            bail!("Max retry amount reached");
+        }
+
+        match task.task_type {
+            Operations::OpenFile => {
+                let result = Operations::open_file();
+                if result.is_err() {
+                    self.failed_task_manager.push(retry_priority);
+                    task.retry_counter += 1;
+                }
+            },
+            Operations::WriteToFile => {
+                let result = Operations::create_and_write_to_file("reecexuted");
+                if result.is_err() {
+                    self.failed_task_manager.push(retry_priority);
+                    task.retry_counter += 1;
+                }
+            },
+            Operations::GetBTCPrice => {
+                let btc_price = Operations::get_current_btc_price().await;
+                if btc_price.is_err(){
+                    self.failed_task_manager.push(retry_priority);
+                    task.retry_counter += 1;
+                }
+                println!("The current BTC Price is {:?}", btc_price);
+            },
+            Operations::GetETHPrice => {
+                let eth_price = Operations::get_current_eth_price().await;
+                if eth_price.is_err(){
+                    self.failed_task_manager.push(retry_priority);
+                    task.retry_counter += 1;
+                }
+                println!("The current ETH Price is {:?}", eth_price);
+            }
+        }
+        Ok(())
+    }
 }
