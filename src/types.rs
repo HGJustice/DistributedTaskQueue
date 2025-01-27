@@ -3,9 +3,9 @@ use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
 
-
 const MAX_TASK_RETRY: u32 = 3;
 
+#[derive(PartialEq, Debug)] 
 pub enum Operations {
     OpenFile,
     WriteToFile, 
@@ -15,7 +15,7 @@ pub enum Operations {
 
 impl Operations {
     pub fn open_file() -> Result<()> {
-        let mut data_file = File::open("task_queue/test_file.txt").context("Coudlnt open file")?;
+        let mut data_file = File::open("/Users/szymonlyzwinski/Documents/Rust/distributed _task_queue/task_queue/test_file.txt").context("Coudlnt open file")?;
         let mut contents = String::new();
         data_file.read_to_string(&mut contents).context("couldnt read the file")?;
         println!("The file reads: {:?}", contents);
@@ -23,7 +23,7 @@ impl Operations {
     }
 
     pub fn create_and_write_to_file(word: &str) -> Result<()> {
-        let mut data_file = File::create("data.txt").context("Couldnt create file")?;
+        let mut data_file = File::create("new_file_created.txt").context("Couldnt create file")?;
         data_file.write(word.as_bytes()).context("failed to write to file")?;
         println!("Created a file data.txt");
         Ok(())
@@ -69,22 +69,22 @@ impl Operations {
         let price = price_data["ethereum"]["usd"]
             .as_f64()
             .ok_or_else(|| anyhow!("Failed to extract price"))?;
-    
         Ok(price)
     }
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
 pub enum Priority {
-    High(u32),
+    Low(u32),
     Medium(u32),
-    Low(u32)
+    High(u32),
 }
 
+#[derive(PartialEq)] 
 pub struct Tasks {
-    task_type: Operations,
-    priority_level: Priority,
-    retry_counter: u32,
+   pub task_type: Operations,
+   pub priority_level: Priority,
+   pub retry_counter: u32,
 }
 
 impl Tasks {
@@ -94,10 +94,10 @@ impl Tasks {
 }
 
 pub struct TaskQueue {
-    task_counter: u32,
-    priority_manager: BinaryHeap<Priority>,
-    task_manager: HashMap<u32, Tasks>,
-    failed_task_manager: BinaryHeap<Priority>,
+    pub task_counter: u32,
+    pub priority_manager: BinaryHeap<Priority>,
+    pub task_manager: HashMap<u32, Tasks>,
+    pub failed_task_manager: BinaryHeap<Priority>,
 }
 
 impl TaskQueue {
@@ -180,7 +180,7 @@ impl TaskQueue {
         };
         let task = self.task_manager.get_mut(&retry_key).ok_or(anyhow!("task manager empty"))?;
         if task.retry_counter >= MAX_TASK_RETRY {
-            bail!("Max retry amount reached");
+            bail!("Max retry amount reached"); //code duplication ??? whole function 
         }
 
         match task.task_type {
@@ -216,5 +216,9 @@ impl TaskQueue {
             }
         }
         Ok(())
+    }
+
+    pub fn create_workers(&mut self, num_workers: usize, ) -> Result<()>{
+        todo!();
     }
 }
