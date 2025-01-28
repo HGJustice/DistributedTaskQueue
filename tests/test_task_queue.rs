@@ -63,20 +63,20 @@ mod tests {
         assert!(queue.priority_manager.is_empty());
     }
 
-    #[test]
-    fn test_execute_single_threaded(){
+    #[tokio::test]
+    async fn  test_execute_single_threaded(){
         let mut queue = TaskQueue::new();
         queue.insert_task(Operations::OpenFile, Priority::Low(0)).unwrap();
         queue.insert_task(Operations::GetETHPrice, Priority::High(0)).unwrap();
         queue.insert_task(Operations::WriteToFile, Priority::High(0)).unwrap();
-        queue.insert_task(Operations::GetBTCPrice, Priority::Low(0)).unwrap();
+        queue.insert_task(Operations::GetBTCPrice, Priority::Medium(0)).unwrap();
 
-        queue.execute_task();
-        queue.execute_task();
+        queue.execute_task().await.unwrap();
+        queue.execute_task().await.unwrap();
         
-        // while !queue.priority_manager.is_empty() {
-            
-        // }
+        let next = queue.priority_manager.peek().unwrap();
+        assert_eq!(next, Priority::Medium(4));
+        queue.execute_task().await.unwrap();
     }
 
     // #[test]

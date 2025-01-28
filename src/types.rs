@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Ok, Result};
 use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
+use std::str::Chars;
 
 const MAX_TASK_RETRY: u32 = 3;
 
