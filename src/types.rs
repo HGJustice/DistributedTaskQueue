@@ -2,11 +2,14 @@ use anyhow::{anyhow, bail, Context, Ok, Result};
 use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
-use std::str::Chars;
+use std::time::Duration;
+use std::sync::Arc;  
+use tokio::sync::Mutex; 
+
 
 const MAX_TASK_RETRY: u32 = 3;
 
-#[derive(PartialEq, Debug)] 
+#[derive(PartialEq, Debug, Clone)] 
 pub enum Operations {
     OpenFile,
     WriteToFile, 
@@ -15,8 +18,8 @@ pub enum Operations {
 }
 
 impl Operations {
-    pub fn open_file() -> Result<()> {
-        let mut data_file = File::open("/Users/szymonlyzwinski/Documents/Rust/distributed _task_queue/task_queue/test_file.txt").context("Coudlnt open file")?;
+    pub fn open_file(input: &str) -> Result<()> {
+        let mut data_file = File::open(input).context("Coudlnt open file")?;
         let mut contents = String::new();
         data_file.read_to_string(&mut contents).context("couldnt read the file")?;
         println!("The file reads: {:?}", contents);
@@ -81,33 +84,34 @@ pub enum Priority {
     High(u32),
 }
 
-#[derive(PartialEq)] 
+#[derive(PartialEq, Clone)] 
 pub struct Tasks {
    pub task_type: Operations,
    pub priority_level: Priority,
    pub retry_counter: u32,
+   pub delay: Duration,
 }
 
 impl Tasks {
     pub fn new(task_type: Operations, priority_level: Priority) -> Tasks {
-        Tasks { task_type, priority_level , retry_counter: 0 }
+        Tasks { task_type, priority_level , retry_counter: 0, delay: Duration::new(0, 0) }
     }
 }
 
 pub struct TaskQueue {
-    pub task_counter: u32,
-    pub priority_manager: BinaryHeap<Priority>,
-    pub task_manager: HashMap<u32, Tasks>,
-    pub failed_task_manager: BinaryHeap<Priority>,
+    pub task_counter: Arc<Mutex<u32>>,
+    pub priority_manager: Arc<Mutex<BinaryHeap<Priority>>>,
+    pub task_manager: Arc<Mutex<HashMap<u32, Tasks>>>,
+    pub failed_task_manager: Arc<Mutex<BinaryHeap<Priority>>>,
 }
 
 impl TaskQueue {
     pub fn new() -> TaskQueue {
-        TaskQueue { task_counter: 1, priority_manager: BinaryHeap::new(), task_manager: HashMap::new(), failed_task_manager: BinaryHeap::new() }
+        TaskQueue { task_counter: Arc::new(Mutex::new(1)), priority_manager: Arc::new(Mutex::new(BinaryHeap::new())), task_manager: Arc::new(Mutex::new(HashMap::new())), failed_task_manager: Arc::new(Mutex::new(BinaryHeap::new())) }
     }
 
-    pub fn insert_task(&mut self, task: Operations, priority_level: Priority) -> Result<()> {
-        let counter = self.task_counter;
+    pub async fn insert_task(&mut self, task: Operations, priority_level: Priority) -> Result<()> {
+        let counter = *self.task_counter.lock().await;
 
         let task_priority = match priority_level {
             Priority::High(_) => Priority::High(counter),
@@ -116,57 +120,63 @@ impl TaskQueue {
         };
 
         let new_task = Tasks::new(task, task_priority.clone());
-        self.task_manager.insert(counter, new_task);
-        self.priority_manager.push(task_priority);
-        self.task_counter += 1;
+        self.task_manager.lock().await.insert(counter, new_task);
+        self.priority_manager.lock().await.push(task_priority);
+        let mut counter_lock = self.task_counter.lock().await;
+        *counter_lock += 1;
         Ok(())
     }
 
-    pub fn get_task(&self, task_key: u32) -> Result<&Tasks> {
-        let result = self.task_manager.get(&task_key).ok_or(anyhow!("key value doesnt exisit"))?;
+    pub async fn get_task(&self, task_key: u32) -> Result<Tasks> {
+        let result = self.task_manager.lock().await.get(&task_key).cloned().ok_or(anyhow!("key value doesnt exisit"))?;
         Ok(result)
     }
 
-    pub fn get_priority_task(&self) -> Result<&Priority> {
-        let result = self.priority_manager.peek().ok_or(anyhow!("no priority avaiable"))?;
+    pub async fn get_priority_task(&self) -> Result<Priority> {
+        let result = self.priority_manager.lock().await.peek().cloned().ok_or(anyhow!("no priority avaiable"))?;
         Ok(result)
     }
 
     pub async fn execute_task(&mut self,) -> Result<()>{
-        let first = self.priority_manager.pop().ok_or(anyhow!("nothing in the queue"))?;
+        let first = self.priority_manager.lock().await.pop().ok_or(anyhow!("nothing in the queue"))?;
         let task_key = match first {
             Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
         };
-        let task = self.task_manager.get_mut(&task_key).ok_or(anyhow!("task not found"))?;
+        let mut task_manager = self.task_manager.lock().await;
+        let task = task_manager.get_mut(&task_key).ok_or(anyhow!("task not found"))?;
         
         match task.task_type {
             Operations::OpenFile => {
-                let result = Operations::open_file();
+                let result = Operations::open_file("/Users/szymonlyzwinski/Documents/Rust/distributed _task_queue/task_queue/test_file.txt");
                 if result.is_err(){
-                    self.failed_task_manager.push(first);
+                    self.failed_task_manager.lock().await.push(first);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
             },
             Operations::WriteToFile => {
                 let result = Operations::create_and_write_to_file("Hi");
                 if result.is_err(){
-                    self.failed_task_manager.push(first);
+                    self.failed_task_manager.lock().await.push(first);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
             },
             Operations::GetBTCPrice => {
                 let btc_price = Operations::get_current_btc_price().await;
                 if btc_price.is_err(){
-                    self.failed_task_manager.push(first);
+                    self.failed_task_manager.lock().await.push(first);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
                 println!("The current BTC Price is {:?}", btc_price);
             }
             Operations::GetETHPrice => {
                 let eth_price = Operations::get_current_eth_price().await;
                 if eth_price.is_err(){
-                    self.failed_task_manager.push(first);
+                    self.failed_task_manager.lock().await.push(first);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
                 println!("The current ETH Price is {:?}", eth_price);
             }
@@ -175,43 +185,50 @@ impl TaskQueue {
 }
 
     pub async fn re_execute_task(&mut self,) -> Result<()> {
-        let retry_priority = self.failed_task_manager.pop().ok_or(anyhow!("retry manager is empty"))?;
+        let retry_priority = self.failed_task_manager.lock().await.pop().ok_or(anyhow!("retry manager is empty"))?;
         let retry_key =  match retry_priority  {
             Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
         };
-        let task = self.task_manager.get_mut(&retry_key).ok_or(anyhow!("task manager empty"))?;
+
+        let mut task_manager = self.task_manager.lock().await;
+        let task = task_manager.get_mut(&retry_key).ok_or(anyhow!("task not found"))?;
+
         if task.retry_counter >= MAX_TASK_RETRY {
             bail!("Max retry amount reached"); //code duplication ??? whole function 
         }
 
         match task.task_type {
             Operations::OpenFile => {
-                let result = Operations::open_file();
+                let result = Operations::open_file("/Users/szymonlyzwinski/Documents/Rust/distributed _task_queue/task_queue/test_file.txt");
                 if result.is_err() {
-                    self.failed_task_manager.push(retry_priority);
+                    self.failed_task_manager.lock().await.push(retry_priority);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
             },
             Operations::WriteToFile => {
                 let result = Operations::create_and_write_to_file("reecexuted");
                 if result.is_err() {
-                    self.failed_task_manager.push(retry_priority);
+                    self.failed_task_manager.lock().await.push(retry_priority);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
             },
             Operations::GetBTCPrice => {
                 let btc_price = Operations::get_current_btc_price().await;
                 if btc_price.is_err(){
-                    self.failed_task_manager.push(retry_priority);
+                    self.failed_task_manager.lock().await.push(retry_priority);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
                 println!("The current BTC Price is {:?}", btc_price);
             },
             Operations::GetETHPrice => {
                 let eth_price = Operations::get_current_eth_price().await;
                 if eth_price.is_err(){
-                    self.failed_task_manager.push(retry_priority);
+                    self.failed_task_manager.lock().await.push(retry_priority);
                     task.retry_counter += 1;
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
                 }
                 println!("The current ETH Price is {:?}", eth_price);
             }
@@ -219,7 +236,15 @@ impl TaskQueue {
         Ok(())
     }
 
-    pub fn create_workers(&mut self, num_workers: usize, ) -> Result<()>{
-        todo!();
-    }
+    // pub fn create_workers(&mut self, num_workers: usize, ) -> Result<()> {
+    //     if num_workers == 0 as usize {
+    //         bail!("Workers threads needs to be Greater then 0");
+    //     }
+
+    //     for _ in 0..num_workers {
+    //         tokio::spawn(
+
+    //         )
+    //     }
+    // }
 }

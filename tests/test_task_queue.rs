@@ -5,7 +5,7 @@ mod tests {
 
     #[test]
     fn test_operations_openfile() {
-        let result = Operations::open_file();
+        let result = Operations::open_file("/Users/szymonlyzwinski/Documents/Rust/distributed _task_queue/task_queue/test_file.txt");
         assert!(result.is_ok());
     }
 
@@ -74,14 +74,17 @@ mod tests {
         queue.execute_task().await.unwrap();
         queue.execute_task().await.unwrap();
         
-        let next = queue.priority_manager.peek().unwrap();
+        let next = queue.priority_manager.pop().unwrap();
         assert_eq!(next, Priority::Medium(4));
-        queue.execute_task().await.unwrap();
     }
 
-    // #[test]
-    // fn test_rexecute_single_threaded(){
-    //     todo!();
+    // #[tokio::test]
+    // async fn test_rexecute_single_threaded(){
+    //    let mut queue = TaskQueue::new();
+    //    queue.insert_task(Operations::OpenFile, Priority::Low(0)).unwrap();
+    //    queue.execute_task().await.unwrap();
+    //    assert!(!queue.failed_task_manager.is_empty());
+    //    assert_eq!(queue.task_manager.get(&1).unwrap().retry_counter, 1);
     // }
 
 }
