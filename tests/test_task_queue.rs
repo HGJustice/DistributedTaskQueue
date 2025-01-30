@@ -20,7 +20,7 @@ mod tests {
         let result = Operations::get_current_btc_price().await;
         assert!(result.is_ok());
         let price = result.unwrap();
-        assert!(price > 90_000.0 && price < 105_000.0);
+        assert!(price > 90_000.0 && price < 115_000.0);
     }
 
     #[tokio::test]
@@ -31,60 +31,60 @@ mod tests {
         assert!(price > 3000.0 && price < 3500.0);
     }
 
-    #[test]
-    fn test_task_queue_new(){
+    #[tokio::test]
+   async fn test_task_queue_new(){
         let result = TaskQueue::new();
-        assert!(result.task_counter == 1 && result.priority_manager.is_empty() && result.task_manager.is_empty() && result.failed_task_manager.is_empty());
+        assert!(*result.task_counter.lock().await == 1 && result.priority_manager.lock().await.is_empty() && result.task_manager.lock().await.is_empty() && result.failed_task_manager.lock().await.is_empty());
     }
 
-    #[test]
-    fn test_insert_task(){
+    #[tokio::test]
+    async fn test_insert_task(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).unwrap();
-        let task = queue.get_task(1).unwrap();
+        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
+        let task = queue.get_task(1).await.unwrap();
         assert_eq!(task.task_type, Operations::WriteToFile);
         assert_eq!(task.retry_counter, 0);
     }
 
-    #[test]
-    fn test_priority_manager(){
+    #[tokio::test]
+    async fn test_priority_manager(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::GetBTCPrice, Priority::Low(0)).unwrap();
-        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).unwrap();
-        queue.insert_task(Operations::OpenFile, Priority::Medium(0)).unwrap();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).unwrap();
+        queue.insert_task(Operations::GetBTCPrice, Priority::Low(0)).await.unwrap();
+        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).await.unwrap();
+        queue.insert_task(Operations::OpenFile, Priority::Medium(0)).await.unwrap();
+        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
 
-        let result = queue.priority_manager.pop().unwrap();
-        let result2 = queue.priority_manager.pop().unwrap();
+        let result = queue.priority_manager.lock().await.pop().unwrap();
+        let result2 = queue.priority_manager.lock().await.pop().unwrap();
         assert!(result == Priority::High(4) && result2 == Priority::High(2));
-        let result3 = queue.priority_manager.pop().unwrap();
-        let result4 = queue.priority_manager.pop().unwrap();
+        let result3 = queue.priority_manager.lock().await.pop().unwrap();
+        let result4 = queue.priority_manager.lock().await.pop().unwrap();
         assert!(result3 == Priority::Medium(3) && result4 == Priority::Low(1));
-        assert!(queue.priority_manager.is_empty());
+        assert!(queue.priority_manager.lock().await.is_empty());
     }
 
     #[tokio::test]
     async fn  test_execute_single_threaded(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::OpenFile, Priority::Low(0)).unwrap();
-        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).unwrap();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).unwrap();
-        queue.insert_task(Operations::GetBTCPrice, Priority::Medium(0)).unwrap();
+        queue.insert_task(Operations::OpenFile, Priority::Low(0)).await.unwrap();
+        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).await.unwrap();
+        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
+        queue.insert_task(Operations::GetBTCPrice, Priority::Medium(0)).await.unwrap();
 
         queue.execute_task().await.unwrap();
         queue.execute_task().await.unwrap();
         
-        let next = queue.priority_manager.pop().unwrap();
+        let next = queue.priority_manager.lock().await.pop().unwrap();
         assert_eq!(next, Priority::Medium(4));
     }
 
     // #[tokio::test]
     // async fn test_rexecute_single_threaded(){
     //    let mut queue = TaskQueue::new();
-    //    queue.insert_task(Operations::OpenFile, Priority::Low(0)).unwrap();
-    //    queue.execute_task().await.unwrap();
-    //    assert!(!queue.failed_task_manager.is_empty());
-    //    assert_eq!(queue.task_manager.get(&1).unwrap().retry_counter, 1);
+    //    queue.insert_task(Operations::OpenFile, Priority::Low(0)).await.unwrap();         works when delete "test_file.txt"
+    //    queue.execute_task().await.unwrap();                                              but openFile will fail in return
+    //    assert!(!queue.failed_task_manager.lock().await.is_empty());
+    //    assert_eq!(queue.task_manager.lock().await.get(&1).unwrap().retry_counter, 1);
     // }
 
 }

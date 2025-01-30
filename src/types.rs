@@ -211,7 +211,7 @@ impl TaskQueue {
                 if result.is_err() {
                     self.failed_task_manager.lock().await.push(retry_priority);
                     task.retry_counter += 1;
-                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter));
+                    task.delay = Duration::from_secs(2u64.pow(task.retry_counter)); // 2 ** retry counter
                 }
             },
             Operations::GetBTCPrice => {
@@ -236,15 +236,34 @@ impl TaskQueue {
         Ok(())
     }
 
-    // pub fn create_workers(&mut self, num_workers: usize, ) -> Result<()> {
-    //     if num_workers == 0 as usize {
-    //         bail!("Workers threads needs to be Greater then 0");
-    //     }
+    pub async fn create_workers(&mut self, num_workers: usize, ) -> Result<()> {
+        if num_workers == 0 as usize {
+            bail!("Workers threads needs to be Greater then 0");
+        }
 
-    //     for _ in 0..num_workers {
-    //         tokio::spawn(
+        let mut handles = vec![];
 
-    //         )
-    //     }
-    // }
+        for _ in 0..num_workers {
+            let handle =  tokio::spawn(async move {
+                loop {
+                    if !self.priority_manager.lock().await.is_empty() {
+                        self.execute_task().await?;
+                    }
+
+                    if !self.failed_task_manager.lock().await.is_empty(){
+                        let task_priority = self.failed_task_manager.lock().await.peek().ok_or(anyhow!("failed manager is empty"))?;
+                        let task_key = match task_priority {
+                            Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
+                        };
+                        let task = self.task_manager.lock().await.get(&task_key).unwrap();
+                        tokio::time::sleep(task.delay);
+                        self.re_execute_task().await?;
+                    }
+                
+                }
+            });
+            handles.push(handle);
+        }
+        Ok(())
+    }
 }
