@@ -1,11 +1,11 @@
 use anyhow::{anyhow, bail, Context, Ok, Result};
+use core::task;
 use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
 use std::sync::Arc;  
 use tokio::sync::Mutex; 
-
 
 const MAX_TASK_RETRY: u32 = 3;
 
@@ -18,6 +18,16 @@ pub enum Operations {
 }
 
 impl Operations {
+
+    pub fn sort_counter(counter: u32, shortcut: &str) -> Result<Priority> {
+        match shortcut.to_lowercase().as_str() {
+            "low" => Ok(Priority::Low(counter)),
+            "medium" => Ok(Priority::Medium(counter)),
+            "high" => Ok(Priority::High(counter)),
+            _ => bail!("invalid choice, must be low, medium or high"),
+        }
+    }
+
     pub fn open_file(input: &str) -> Result<()> {
         let mut data_file = File::open(input).context("Coudlnt open file")?;
         let mut contents = String::new();
@@ -110,15 +120,10 @@ impl TaskQueue {
         TaskQueue { task_counter: Arc::new(Mutex::new(1)), priority_manager: Arc::new(Mutex::new(BinaryHeap::new())), task_manager: Arc::new(Mutex::new(HashMap::new())), failed_task_manager: Arc::new(Mutex::new(BinaryHeap::new())) }
     }
 
-    pub async fn insert_task(&mut self, task: Operations, priority_level: Priority) -> Result<()> {
+    pub async fn insert_task(&mut self, task: Operations, priority_level: &str) -> Result<()> {
         let counter = *self.task_counter.lock().await;
-
-        let task_priority = match priority_level {
-            Priority::High(_) => Priority::High(counter),
-            Priority::Medium(_) => Priority::Medium(counter),
-            Priority::Low(_) => Priority::Low(counter),
-        };
-
+        let task_priority = Operations::sort_counter(counter, priority_level)?;
+       
         let new_task = Tasks::new(task, task_priority.clone());
         self.task_manager.lock().await.insert(counter, new_task);
         self.priority_manager.lock().await.push(task_priority);
@@ -192,9 +197,9 @@ impl TaskQueue {
 
         let mut task_manager = self.task_manager.lock().await;
         let task = task_manager.get_mut(&retry_key).ok_or(anyhow!("task not found"))?;
-
+         //code duplication ??? whole function 
         if task.retry_counter >= MAX_TASK_RETRY {
-            bail!("Max retry amount reached"); //code duplication ??? whole function 
+            bail!("Max retry amount reached");
         }
 
         match task.task_type {
@@ -236,6 +241,26 @@ impl TaskQueue {
         Ok(())
     }
 
+    pub async fn start_task(mut self, ) -> Result<()> {
+        loop {
+            if !self.priority_manager.lock().await.is_empty() {
+                self.execute_task().await?;
+            }
+
+            if self.failed_task_manager.lock().await.is_empty(){
+                let task_priority = self.failed_task_manager.lock().await.pop().ok_or(anyhow!("failed manager is empty"))?;
+                let task_key = match task_priority {
+                    Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
+                };
+               
+                let task = self.get_task(task_key).await.unwrap();
+              
+                tokio::time::sleep(task.delay).await;
+                self.re_execute_task().await?;
+            }
+        }
+    }
+
     pub async fn create_workers(&mut self, num_workers: usize, ) -> Result<()> {
         if num_workers == 0 as usize {
             bail!("Workers threads needs to be Greater then 0");
@@ -245,22 +270,7 @@ impl TaskQueue {
 
         for _ in 0..num_workers {
             let handle =  tokio::spawn(async move {
-                loop {
-                    if !self.priority_manager.lock().await.is_empty() {
-                        self.execute_task().await?;
-                    }
-
-                    if !self.failed_task_manager.lock().await.is_empty(){
-                        let task_priority = self.failed_task_manager.lock().await.peek().ok_or(anyhow!("failed manager is empty"))?;
-                        let task_key = match task_priority {
-                            Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
-                        };
-                        let task = self.task_manager.lock().await.get(&task_key).unwrap();
-                        tokio::time::sleep(task.delay);
-                        self.re_execute_task().await?;
-                    }
-                
-                }
+                self.start_task().await;
             });
             handles.push(handle);
         }

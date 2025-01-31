@@ -40,7 +40,7 @@ mod tests {
     #[tokio::test]
     async fn test_insert_task(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
+        queue.insert_task(Operations::WriteToFile, "high").await.unwrap();
         let task = queue.get_task(1).await.unwrap();
         assert_eq!(task.task_type, Operations::WriteToFile);
         assert_eq!(task.retry_counter, 0);
@@ -49,10 +49,10 @@ mod tests {
     #[tokio::test]
     async fn test_priority_manager(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::GetBTCPrice, Priority::Low(0)).await.unwrap();
-        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).await.unwrap();
-        queue.insert_task(Operations::OpenFile, Priority::Medium(0)).await.unwrap();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
+        queue.insert_task(Operations::GetBTCPrice, "low").await.unwrap();
+        queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
+        queue.insert_task(Operations::OpenFile, "medium").await.unwrap();
+        queue.insert_task(Operations::WriteToFile, "high").await.unwrap();
 
         let result = queue.priority_manager.lock().await.pop().unwrap();
         let result2 = queue.priority_manager.lock().await.pop().unwrap();
@@ -66,10 +66,10 @@ mod tests {
     #[tokio::test]
     async fn  test_execute_single_threaded(){
         let mut queue = TaskQueue::new();
-        queue.insert_task(Operations::OpenFile, Priority::Low(0)).await.unwrap();
-        queue.insert_task(Operations::GetETHPrice, Priority::High(0)).await.unwrap();
-        queue.insert_task(Operations::WriteToFile, Priority::High(0)).await.unwrap();
-        queue.insert_task(Operations::GetBTCPrice, Priority::Medium(0)).await.unwrap();
+        queue.insert_task(Operations::OpenFile, "low").await.unwrap();
+        queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
+        queue.insert_task(Operations::WriteToFile, "high").await.unwrap();
+        queue.insert_task(Operations::GetBTCPrice, "medium").await.unwrap();
 
         queue.execute_task().await.unwrap();
         queue.execute_task().await.unwrap();
