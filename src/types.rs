@@ -1,5 +1,4 @@
 use anyhow::{anyhow, bail, Context, Ok, Result};
-use core::task;
 use std::collections::{HashMap, BinaryHeap};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -108,6 +107,7 @@ impl Tasks {
     }
 }
 
+#[derive(Clone)]
 pub struct TaskQueue {
     pub task_counter: Arc<Mutex<u32>>,
     pub priority_manager: Arc<Mutex<BinaryHeap<Priority>>>,
@@ -247,7 +247,7 @@ impl TaskQueue {
                 self.execute_task().await?;
             }
 
-            if self.failed_task_manager.lock().await.is_empty(){
+            if !self.failed_task_manager.lock().await.is_empty(){
                 let task_priority = self.failed_task_manager.lock().await.pop().ok_or(anyhow!("failed manager is empty"))?;
                 let task_key = match task_priority {
                     Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
@@ -267,12 +267,17 @@ impl TaskQueue {
         }
 
         let mut handles = vec![];
-
+      
         for _ in 0..num_workers {
+            let queue = self.clone(); // expensive to clone the task queue for x number of threads?, box t?
             let handle =  tokio::spawn(async move {
-                self.start_task().await;
+                queue.start_task().await.unwrap();
             });
             handles.push(handle);
+        }
+
+        for handle in handles {
+           handle.await.unwrap();
         }
         Ok(())
     }

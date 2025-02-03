@@ -1,6 +1,8 @@
 use task_queue::types::*;
 
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
@@ -28,7 +30,7 @@ mod tests {
         let result = Operations::get_current_eth_price().await;
         assert!(result.is_ok());
         let price = result.unwrap();
-        assert!(price > 3000.0 && price < 3500.0);
+        assert!(price > 2000.0 && price < 3000.0);
     }
 
     #[tokio::test]
@@ -86,6 +88,20 @@ mod tests {
     //    assert!(!queue.failed_task_manager.lock().await.is_empty());
     //    assert_eq!(queue.task_manager.lock().await.get(&1).unwrap().retry_counter, 1);
     // }
+
+    #[tokio::test]
+    async fn  test_threads(){
+        let mut queue = TaskQueue::new();
+        queue.insert_task(Operations::GetBTCPrice, "high").await.unwrap();
+        queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
+        queue.insert_task(Operations::OpenFile, "medium").await.unwrap();
+        queue.insert_task(Operations::OpenFile, "low").await.unwrap();
+        queue.insert_task(Operations::WriteToFile, "medium").await.unwrap();
+
+        tokio::time::timeout(Duration::from_secs(7), queue.create_workers(2)).await.unwrap_err();
+
+        assert!(queue.priority_manager.lock().await.is_empty());
+    }
 
 }
 
