@@ -107,20 +107,21 @@ impl Tasks {
     }
 }
 
-#[derive(Clone)]
 pub struct TaskQueue {
-    pub task_counter: Arc<Mutex<u32>>,
-    pub priority_manager: Arc<Mutex<BinaryHeap<Priority>>>,
-    pub task_manager: Arc<Mutex<HashMap<u32, Tasks>>>,
-    pub failed_task_manager: Arc<Mutex<BinaryHeap<Priority>>>,
+    pub task_counter: Mutex<u32>,
+    pub priority_manager: Mutex<BinaryHeap<Priority>>,
+    pub task_manager: Mutex<HashMap<u32, Tasks>>,
+    pub failed_task_manager: Mutex<BinaryHeap<Priority>>,
 }
 
+type TaskQueueArc = Arc<TaskQueue>;
+
 impl TaskQueue {
-    pub fn new() -> TaskQueue {
-        TaskQueue { task_counter: Arc::new(Mutex::new(1)), priority_manager: Arc::new(Mutex::new(BinaryHeap::new())), task_manager: Arc::new(Mutex::new(HashMap::new())), failed_task_manager: Arc::new(Mutex::new(BinaryHeap::new())) }
+    pub fn new() -> TaskQueueArc {
+       Arc::new( TaskQueue { task_counter: Mutex::new(1), priority_manager: Mutex::new(BinaryHeap::new()), task_manager: Mutex::new(HashMap::new()), failed_task_manager: Mutex::new(BinaryHeap::new()) })
     }
 
-    pub async fn insert_task(&mut self, task: Operations, priority_level: &str) -> Result<()> {
+    pub async fn insert_task(&self, task: Operations, priority_level: &str) -> Result<()> {
         let counter = *self.task_counter.lock().await;
         let task_priority = Operations::sort_counter(counter, priority_level)?;
        
@@ -142,7 +143,7 @@ impl TaskQueue {
         Ok(result)
     }
 
-    pub async fn execute_task(&mut self,) -> Result<()>{
+    pub async fn execute_task(&self,) -> Result<()>{
         let first = self.priority_manager.lock().await.pop().ok_or(anyhow!("nothing in the queue"))?;
         let task_key = match first {
             Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
@@ -189,7 +190,7 @@ impl TaskQueue {
             Ok(())
 }
 
-    pub async fn re_execute_task(&mut self,) -> Result<()> {
+    pub async fn re_execute_task(&self,) -> Result<()> {
         let retry_priority = self.failed_task_manager.lock().await.pop().ok_or(anyhow!("retry manager is empty"))?;
         let retry_key =  match retry_priority  {
             Priority::High(key) | Priority::Medium(key) | Priority::Low(key) => key
@@ -241,7 +242,7 @@ impl TaskQueue {
         Ok(())
     }
 
-    pub async fn start_task(mut self, ) -> Result<()> {
+    pub async fn start_task(&self,) -> Result<()> {
         loop {
             if !self.priority_manager.lock().await.is_empty() {
                 self.execute_task().await?;
@@ -261,7 +262,7 @@ impl TaskQueue {
         }
     }
 
-    pub async fn create_workers(&mut self, num_workers: usize, ) -> Result<()> {
+    pub async fn create_workers(self: &TaskQueueArc, num_workers: usize, ) -> Result<()> {
         if num_workers == 0 as usize {
             bail!("Workers threads needs to be Greater then 0");
         }
@@ -269,7 +270,7 @@ impl TaskQueue {
         let mut handles = vec![];
       
         for _ in 0..num_workers {
-            let queue = self.clone(); // expensive to clone the task queue for x number of threads?, box t?
+            let queue = Arc::clone(self); 
             let handle =  tokio::spawn(async move {
                 queue.start_task().await.unwrap();
             });

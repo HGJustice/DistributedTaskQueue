@@ -41,7 +41,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_task(){
-        let mut queue = TaskQueue::new();
+        let queue = TaskQueue::new();
         queue.insert_task(Operations::WriteToFile, "high").await.unwrap();
         let task = queue.get_task(1).await.unwrap();
         assert_eq!(task.task_type, Operations::WriteToFile);
@@ -50,7 +50,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_priority_manager(){
-        let mut queue = TaskQueue::new();
+        let queue = TaskQueue::new();
         queue.insert_task(Operations::GetBTCPrice, "low").await.unwrap();
         queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
         queue.insert_task(Operations::OpenFile, "medium").await.unwrap();
@@ -67,7 +67,7 @@ mod tests {
 
     #[tokio::test]
     async fn  test_execute_single_threaded(){
-        let mut queue = TaskQueue::new();
+        let queue = TaskQueue::new();
         queue.insert_task(Operations::OpenFile, "low").await.unwrap();
         queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
         queue.insert_task(Operations::WriteToFile, "high").await.unwrap();
@@ -91,7 +91,7 @@ mod tests {
 
     #[tokio::test]
     async fn  test_threads(){
-        let mut queue = TaskQueue::new();
+        let queue = TaskQueue::new();
         queue.insert_task(Operations::GetBTCPrice, "high").await.unwrap();
         queue.insert_task(Operations::GetETHPrice, "high").await.unwrap();
         queue.insert_task(Operations::OpenFile, "medium").await.unwrap();
